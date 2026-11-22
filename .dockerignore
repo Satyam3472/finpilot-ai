@@ -1,0 +1,14 @@
+*
+!requirements.lock
+!backend/
+!backend/**/*.py
+!finance_agent/
+!finance_agent/agents/
+!finance_agent/**/*.py
+!scripts/
+!scripts/**/*.py
+**/__pycache__/
+**/*.py[cod]
+**/.env*
+**/secrets/
+**/.secrets/

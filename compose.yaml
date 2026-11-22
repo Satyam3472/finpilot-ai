@@ -1,0 +1,77 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      FINPILOT_MODE: container
+      FINPILOT_DATA_DIR: /data
+      FINPILOT_ORIGIN: ${FINPILOT_ORIGIN:-http://localhost:3000,http://127.0.0.1:3000}
+      FINPILOT_REQUIRE_GEMINI: ${FINPILOT_REQUIRE_GEMINI:-1}
+      FINPILOT_PASSWORD_HASH_FILE: /run/secrets/password_hash
+      FINPILOT_SESSION_SECRET_FILE: /run/secrets/session_secret
+      FINPILOT_PROXY_SECRET_FILE: /run/secrets/proxy_secret
+      GOOGLE_API_KEY_FILE: /run/secrets/gemini_key
+      GOOGLE_GENAI_USE_VERTEXAI: "FALSE"
+    secrets: [password_hash, session_secret, proxy_secret, gemini_key]
+    volumes:
+      - finpilot-data:/data
+    networks: [private, egress]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    stop_grace_period: 35s
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health/ready', timeout=3).close()"]
+      interval: 15s
+      timeout: 4s
+      retries: 4
+      start_period: 8s
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      FINPILOT_BACKEND_URL: http://backend:8000
+      FINPILOT_PROXY_SECRET_FILE: /run/secrets/proxy_secret
+    secrets: [proxy_secret]
+    ports:
+      - "127.0.0.1:${FINPILOT_PORT:-3000}:3000"
+    networks: [private, edge]
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=32m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/ready',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 4s
+      retries: 4
+      start_period: 8s
+
+networks:
+  private:
+    internal: true
+  egress: {}
+  edge: {}
+
+volumes:
+  finpilot-data: {}
+
+secrets:
+  password_hash:
+    file: ${FINPILOT_SECRETS_DIR:-./.secrets}/password_hash
+  session_secret:
+    file: ${FINPILOT_SECRETS_DIR:-./.secrets}/session_secret
+  proxy_secret:
+    file: ${FINPILOT_SECRETS_DIR:-./.secrets}/proxy_secret
+  gemini_key:
+    file: ${FINPILOT_SECRETS_DIR:-./.secrets}/gemini_key
